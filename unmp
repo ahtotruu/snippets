@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Remove the video component from the Android "Motion Photo" files in the given directory
+
+# Copyright 2022 Ahto Truu
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+IFS=$'\n'
+for src_file in "$1"/PXL_*.MP.jpg; do
+	if [ ! -f "$src_file" ]; then
+		continue
+	fi
+	unset offset
+	for header in 'ftypisom' 'ftypmp4' 'ftypmp42'; do
+		offset=$(grep -F --byte-offset --only-matching --text "$header" "$src_file")
+		if [[ $offset ]]; then
+			dst_file=${src_file/.MP/}
+			echo "$src_file -> $dst_file"
+			cp "$src_file" "$dst_file"
+			offset=${offset%:*}
+			truncate -s $((offset - 4)) "$dst_file"
+			touch -r "$src_file" "$dst_file"
+			break
+		fi
+	done
+done
