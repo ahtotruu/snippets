@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Remove the video component from the Android "Motion Photo" files in the given directory
+# Remove the video component from the Android "Motion Photo" files in the given directories
 
-# Copyright 2022 Ahto Truu
+# Copyright 2022-2023 Ahto Truu
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,22 +14,73 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+while getopts "hfdrv" OPT; do
+	case "$OPT" in
+		h) help=1 ;;
+		f) force=1 ;;
+		d) delete=1 ;;
+		r) rename=1 ;;
+		v) verbose=1 ;;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [[ $help ]]; then
+	echo "Usage: $0 [-h] [-f] [-d] [-r] [-v] dir..." 1>&2
+	echo "Removes the video component from the Android \"Motion Photo\" files in the given directories" 1>&2
+	echo -e "\t-h\tShow help and exit" 1>&2
+	echo -e "\t-f\tOverwrite existing files" 1>&2
+	echo -e "\t-d\tDelete source files on success" 1>&2
+	echo -e "\t-r\tJust rename files that don't actually contain video" 1>&2
+	echo -e "\t-v\tBe verbose, list processed files" 1>&2
+	echo -e "\tdir...\tDirectories to process" 1>&2
+	exit 0
+fi
+
 IFS=$'\n'
-for src_file in "$1"/PXL_*.MP.jpg; do
-	if [ ! -f "$src_file" ]; then
+while [[ "$1" ]]; do
+	dir=$1
+	shift
+	if [[ ! -d $dir ]]; then
+		echo "Skipping '$dir': not a directory" 1>&2
 		continue
 	fi
-	unset offset
-	for header in 'ftypisom' 'ftypmp4' 'ftypmp42'; do
-		offset=$(grep -F --byte-offset --only-matching --text "$header" "$src_file")
-		if [[ $offset ]]; then
-			dst_file=${src_file/.MP/}
-			echo "$src_file -> $dst_file"
-			cp "$src_file" "$dst_file"
-			offset=${offset%:*}
-			truncate -s $((offset - 4)) "$dst_file"
-			touch -r "$src_file" "$dst_file"
-			break
+	for src in "$dir"/*.MP.{jpg,JPG,jpeg,JPEG}; do
+		if [[ ! -e $src ]]; then
+			continue
+		fi
+		if [[ ! -f $src ]]; then
+			echo "Skipping '$src': not a regular file" 1>&2
+			continue
+		fi
+		dst=${src/.MP/}
+		if [[ -e $dst ]]; then
+			if [[ ! $force ]]; then
+				echo "Skipping '$src': target exists" 1>&2
+				continue
+			fi
+		fi
+		unset offset
+		unset success
+		for header in 'ftypisom' 'ftypmp4' 'ftypmp42'; do
+			offset=$(grep -F --byte-offset --only-matching --text "$header" "$src")
+			if [[ $offset ]]; then
+				if [[ $verbose ]]; then
+					echo "'$src' -> '$dst'"
+				fi
+				cp "$src" "$dst" &&
+					offset=${offset%:*} &&
+					truncate -s $((offset - 4)) "$dst" &&
+					touch -r "$src" "$dst" &&
+					success=1
+				break
+			fi
+		done
+		if [[ $success ]] && [[ $delete ]]; then
+			rm "$src"
+		fi
+		if [[ ! $offset ]] && [[ $rename ]]; then
+			mv "$src" "$dst"
 		fi
 	done
 done
